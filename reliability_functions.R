@@ -19,7 +19,7 @@ TidySurv <- function(x){
   #  x: survfit object
   if(x$dist == "weibull"){
     scale = exp(x$icoef[1]) %>% unname()
-    shape = exp(x$icoef[1]) %>% unname()
+    shape = 1/exp(x$icoef[2]) %>% unname()
     se = diag(x$var)
     return(tibble::tibble(
       "parameter_name" = c("scale","shape"),
@@ -31,7 +31,36 @@ TidySurv <- function(x){
     return(tibble::tibble(
       "parameter_name" = "mean",
       "estimate" = mu,
-      "se" = sqrt(x$var[1]) * mu
+      "se" = sqrt(x$var) * mu
+    ))
+  }
+}
+
+AntiTidySurv <- function(x){
+  # like broom package function - to get distribution parameter stats
+  # Args:
+  #  x: survfit object
+  if(x$dist == "weibull"){
+    scale = exp(x$icoef[1]) %>% unname()
+    shape = 1/exp(x$icoef[2]) %>% unname()
+    se = diag(x$var)
+    return(tibble::tibble(
+      "param1" = scale,
+      "param1_se" = sqrt(se[1]) * scale %>% unname(),
+      "param2" = shape,
+      "param2_se" = sqrt(se[2]) * shape %>% unname(),
+      "dist_mean" = scale*gamma(1+1/shape),
+      "loglik" = -x$loglik[1]
+    ))
+  } else {
+    mu <- exp(x$icoef[1]) %>% unname()
+    return(tibble::tibble(
+      "param1" = mu,
+      "param1_se" = (sqrt(x$var) * mu) %>% as.numeric(),
+      "param2" = NA,
+      "param2_se" = NA,
+      "dist_mean" = mu,
+      "loglik" = -x$loglik[1]
     ))
   }
 }

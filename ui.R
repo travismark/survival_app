@@ -45,8 +45,9 @@ Springer",
     fluidRow(
       column(width = 6,
       box(title = "Survival Plot", solidHeader = TRUE, 
-          width = NULL, status = "primary",
-      plotOutput("surv_plot"))
+          width = NULL, status = "primary", 
+          uiOutput("surv_options"),
+          plotOutput("surv_plot"))
       ),
       column(width = 6,
       # Show a plot of the generated distribution
