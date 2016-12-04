@@ -53,9 +53,22 @@ Springer",
       # Show a plot of the generated distribution
       box(title = "Distribution Plot", width = NULL, 
           status = "primary", solidHeader = TRUE,
-            plotOutput("dist_plot")
+          uiOutput("dist_options"),
+          plotOutput("dist_plot")
   ))
-))
+),
+fluidRow(
+  column(width = 6,
+         box(title = "Per-Patient Time to Event with Tooltiop", solidHeader = TRUE,
+             width = NULL, status = "primary",
+             ggiraphOutput("interactive_plot"))),
+  column(width = 6,
+         box(title = "Regression with Cofactors", solidHeader = TRUE,
+             width = NULL, status = "primary",
+             uiOutput("parametric_regression_select"),
+             verbatimTextOutput("parameteric_regression")))
+)
+)
 ))
 
 

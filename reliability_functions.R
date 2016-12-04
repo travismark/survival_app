@@ -40,6 +40,7 @@ AntiTidySurv <- function(x){
   # like broom package function - to get distribution parameter stats
   # Args:
   #  x: survfit object
+  
   if(x$dist == "weibull"){
     scale = exp(x$icoef[1]) %>% unname()
     shape = 1/exp(x$icoef[2]) %>% unname()

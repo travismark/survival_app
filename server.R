@@ -103,7 +103,7 @@ shinyServer(function(input, output) {
     }
     #pval <- BetaTest(surv_fit_weib()$loglik[1], surv_fit_exp()$loglik[1])
     to_return_wei <- dists() %>% 
-      mutate(dist_name = "weibull", rest = map(weib, ~ AntiTidySurv(.)),
+      mutate(dist_name = "weibull", rest = purrr::map(weib, ~ AntiTidySurv(.)),
              ranked_points = map2(.x = data, .y = weib, 
                                        .f = ~ CalculateModKM(select(.x, time, causal) %>% 
                                                                as.data.frame(), params = .y[["icoef"]], 
@@ -111,7 +111,7 @@ shinyServer(function(input, output) {
              anderson_darling = map_dbl(ranked_points, ~ CalculateADA(.))) %>% 
                              unnest(rest)
     to_return_exp <- dists() %>% 
-      mutate(dist_name = "exponential", rest = map(exp, ~ AntiTidySurv(.)), 
+      mutate(dist_name = "exponential", rest = purrr::map(exp, ~ AntiTidySurv(.)), 
              ranked_points = map2(.x = data, .y = exp, 
                                        .f = ~ CalculateModKM(select(.x, time, causal) %>% 
                                                                as.data.frame(), params = .y[["icoef"]], 
@@ -145,16 +145,77 @@ shinyServer(function(input, output) {
     s <- input$summary_plot_selection
     if(!is.null(s)){
       if(any(class(event_data()[[s]]) %in% c("numeric", "integer"))){
-        hist(event_data()[[s]], 
-             xlab = s, main = "Histogram")
+        #hist(event_data()[[s]], 
+        #     xlab = s, main = "Histogram")
+        ggplot(data = event_data(), aes(x = s)) + geom_histogram()
       } else {
         barplot(table(event_data()[[s]]), xlab = s)
       }
     }
   })
   
+  output$surv_options <- renderUI({
+    if(is.null(input$split_by) || input$split_by == "None"){
+      return(NULL)
+    }
+    return(
+      tags$div(checkboxInput("surv_split_by", "Split Survival Plot by Factor", value = TRUE),
+               conditionalPanel(
+                 condition = "input.surv_split_by == true",
+                 tags$div(selectInput("surv_split_by_choice", multiple = TRUE,
+                             label = paste("Select a", MakeTitleCase(input$split_by)),
+                             choices = levels(event_data()[[input$split_by]]),
+                             selected = levels(event_data()[[input$split_by]])),
+                          style = "padding-left: 20px")
+               ),
+               conditionalPanel(
+                 condition = "input.surv_split_by == true",
+                 checkboxInput("surv_split_confint", "Conf. Intervals", value = FALSE),
+                 style = "padding-left: 20px"),
+        class = "well", style = "display:inline-flex; padding-bottom: 0px; padding-top: 14px")
+    )
+  })
+  
+  output$dist_options <- renderUI({
+    if(is.null(input$split_by) || input$split_by == "None"){
+      return(NULL)
+    }
+    return(
+      tags$div(checkboxInput("dist_split_by", "Split Distribution Plot by Factor", value = TRUE),
+               conditionalPanel(
+                 condition = "input.dist_split_by == true",
+                 tags$div(selectInput("dist_split_by_choice", multiple = TRUE,
+                                      label = paste("Select a", MakeTitleCase(input$split_by)),
+                                      choices = levels(event_data()[[input$split_by]]),
+                                      selected = levels(event_data()[[input$split_by]])),
+                          style = "padding-left: 20px")
+               ),
+               class = "well", style = "display:inline-flex; padding-bottom: 0px; padding-top: 14px")
+    )
+  })
+  
   output$surv_plot <- renderPlot({
-    ggsurvplot(survfit(surv_obj() ~ 1))
+    if(is.null(input$surv_split_by) || !input$surv_split_by){
+      # if null then data hasn't been split by factor. provide single plot of all data
+      # if false user wants to continue to group data for a single surv
+      ggsurvplot(survfit(surv_obj() ~ 1))
+    } else if (input$surv_split_by){
+      if(is.null(input$surv_split_by_choice)){
+        return(NULL)
+      }
+      # if false then user wants to view a line per selected factor level
+      
+      filtered_data <- event_data()[event_data()[[input$split_by]] %in% input$surv_split_by_choice, ]
+      filtered_data[[input$split_by]] <- factor(filtered_data[[input$split_by]])
+      split_data <- filtered_data[[input$split_by]]
+      surv_obj <- Surv(time = filtered_data[["time"]], event = filtered_data[["causal"]])
+      
+      ggsurvplot(survfit(surv_obj ~ split_data), 
+                 legend.labs = MakeTitleCase(paste(input$split_by,
+                                                   levels(split_data))),
+                 conf.int = input$surv_split_confint
+      )
+    }
   })
   
   output$dist_plot <- renderPlot({
@@ -162,6 +223,32 @@ shinyServer(function(input, output) {
                                     distribution = "weibull")
     parameter_names <- data.frame(value = "All", parameter_name = "All")
     DisplayWeibullPlot(ranked_points, parameter_names, surv_fit_best()[["icoef"]], surv_fit_best()[["dist"]])
+  })
+  
+  output$interactive_plot <- renderggiraph({
+    to_return <- event_data() %>% ggplot(aes(y = as.numeric(row.names(larynx)), x = time, colour = as.logical(causal))) +
+      geom_point_interactive(aes(tooltip = paste0("Diagnosis Year: ", diagyr, "<br>Age: ", age))) + 
+      facet_grid(paste("Stage", stage) ~ ., scales = "free_y") + 
+      labs(x = "Months until Event", y = "Patient Id") +
+      theme_bw() + theme(axis.text.y = element_blank(), strip.background = element_rect("#3c8dbc"),
+                         panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(),
+                         legend.position = "top") +
+      scale_color_viridis(discrete = TRUE, name = "Recorded Death")
+    ggiraph(code = print(to_return), width = 1)
+  })
+  
+  output$parametric_regression_select <- renderUI({
+    choices = names(event_data())[!names(event_data()) %in% c("time", "causal")]
+    selectInput("parametric_regression_selection", label = "Select Factor to Regress By",
+                choices = choices)
+  })
+  
+  output$parameteric_regression <- renderPrint({
+    if(is.null(input$parametric_regression_selection)){
+      return(NULL)
+    }
+    survreg(surv_obj() ~ event_data()[[input$parametric_regression_selection]], dist = "weibull") %>% 
+      summary() %>% print()
   })
   
 })
